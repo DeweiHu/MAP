@@ -15,6 +15,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data as Data
 import pickle
+import matplotlib.pyplot as plt
 
 
 def dir_mixup(im_1, im_2, im_3, alpha):        
@@ -37,7 +38,7 @@ def data_split(meta_test):
 
 
 class get_DirMixup_dataset(Data.Dataset):
-    def __init__(self, mtrain_data, mtrain_gt, n_mixup, n_patch, patch_size, 
+    def __init__(self, mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size, 
                  alpha=(1.5,1.5,1.5)):
         # hyper-parameters
         self.n_mixup = n_mixup
@@ -48,21 +49,28 @@ class get_DirMixup_dataset(Data.Dataset):
         # output
         self.x_list = []
         self.y_list = []
+        self.anchor_list = []
         
-        keys = list(mtrain_data)
-        assert len(keys) == 3, "sample space error"
+        trainkey = list(mtrain_data)[0]
         
-        for i in range(len(mtrain_data[keys[0]])):
-            im_1 = mtrain_data[keys[0]][i]
-            im_2 = mtrain_data[keys[1]][i]
-            im_3 = mtrain_data[keys[2]][i]
-            y = mtrain_gt[i]
+        testkeys = list(mtest_data)
+        assert len(testkeys) == 3, "sample space error"
+        
+        for i in range(len(mtest_data[testkeys[0]])):
+            im_1 = mtest_data[testkeys[0]][i]
+            im_2 = mtest_data[testkeys[1]][i]
+            im_3 = mtest_data[testkeys[2]][i]
+            y = gt[i]
+            
+#            anchor = 0.4*mtrain_data[trainkey][i] + 0.6*np.float32(y)
+            anchor = mtrain_data[trainkey][i]
             
             mixup_list = self.get_mixup_sample(im_1, im_2, im_3)
-            pair_data = self.get_crop_data(mixup_list, y)
+            pair_data = self.get_crop_data(mixup_list, y, anchor)
         
             self.x_list += pair_data["x_stack"]
             self.y_list += pair_data["y"]
+            self.anchor_list += pair_data["anchor"]
             
     def __len__(self,):
         return len(self.x_list)
@@ -71,9 +79,13 @@ class get_DirMixup_dataset(Data.Dataset):
     def __getitem__(self, idx):    
         x = self.x_list[idx]
         y = self.y_list[idx]
+        im_anchor = self.anchor_list[idx]
+        
         x_tensor = torch.tensor(x).type(torch.FloatTensor)
         y_tensor = torch.tensor(y).type(torch.int64)
-        return x_tensor, y_tensor
+        anchor_tensor = torch.tensor(im_anchor).type(torch.FloatTensor)
+        
+        return x_tensor, y_tensor, anchor_tensor
     
     
     def get_mixup_sample(self, im_1, im_2, im_3):
@@ -89,8 +101,8 @@ class get_DirMixup_dataset(Data.Dataset):
         return sample_x, sample_y
     
     
-    def get_crop_data(self, im_list, gt):
-        pair_data = {"x_stack":[], "y":[]}
+    def get_crop_data(self, im_list, gt, anchor):
+        pair_data = {"x_stack":[], "y":[], "anchor":[]}
         h,w = im_list[0].shape
         crd_x, crd_y = self.get_sample_coordinate(h, w)
         
@@ -98,17 +110,20 @@ class get_DirMixup_dataset(Data.Dataset):
             x = []
             y = gt[crd_x[i]:crd_x[i]+self.patch_size[0],
                    crd_y[i]:crd_y[i]+self.patch_size[1]]
+            im_anchor = anchor[crd_x[i]:crd_x[i]+self.patch_size[0],
+                               crd_y[i]:crd_y[i]+self.patch_size[1]]
             for j in range(len(im_list)):
                 x.append(im_list[j][crd_x[i]:crd_x[i]+self.patch_size[0],
                                  crd_y[i]:crd_y[i]+self.patch_size[1]])
             
             pair_data["x_stack"].append(np.array(x))
             pair_data["y"].append(y)
+            pair_data["anchor"].append(im_anchor[None,:,:])
     
         return pair_data
             
-def load_DirMixup_data(mtrain_data, mtrain_gt, n_mixup, n_patch, patch_size, batch_size):
-    dataset = get_DirMixup_dataset(mtrain_data, mtrain_gt, n_mixup, n_patch, patch_size)
+def load_DirMixup_data(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size, batch_size):
+    dataset = get_DirMixup_dataset(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size)
     loader = Data.DataLoader(dataset, batch_size, shuffle=True)        
     return loader
 
@@ -130,6 +145,31 @@ class SampleMatrix(nn.Module):
             raise ValueError
         
         return matrix
+
+
+def display_array(x, anchor, pred, pred_anchor, gt):
+    b,c,h,w = x.size()
+    get_sample = SampleMatrix()
+    
+    anchor_mat = get_sample(anchor, "latent")
+    pred_anchor_mat = get_sample(pred_anchor, "pred")
+    gt_mat = get_sample(gt, "gt")
+    pred_anchor_color = util.ColorSeg(pred_anchor_mat, gt_mat)
+    
+    fig, ax = plt.subplots(2,b+1,figsize=((b+1)*2,2*2))
+    for i in range(b):
+        x_mat = get_sample(x, "latent", idx=i)
+        pred_mat = get_sample(pred, "pred", idx=i)
+        pred_color = util.ColorSeg(pred_mat, gt_mat)
+        
+        ax[0,i].imshow(x_mat, cmap="gray"),ax[0,i].axis("off")
+        ax[1,i].imshow(pred_color, cmap="gray"),ax[1,i].axis("off")
+    
+    ax[0,b].imshow(anchor_mat, cmap="gray"),ax[0,b].axis("off")
+    ax[1,b].imshow(pred_anchor_color, cmap="gray"),ax[1,b].axis("off")
+    
+    fig.tight_layout(pad=0.1)
+    plt.show()
     
 
 def load_checkpoint(model, optimizer, filename='checkpoint.pth'):
