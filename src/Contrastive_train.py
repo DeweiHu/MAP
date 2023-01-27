@@ -18,12 +18,13 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import random
 
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import StepLR
-
+ 
 model_root = "E:\\Model\\"
 data_root = "E:\\MetaSyn\\data\\"
 check_root = "E:\\MetaSyn\\checkpoint\\"
@@ -46,6 +47,11 @@ for key in meta_test_list:
 with open(data_root + "gt.pickle", "rb") as handle:
     gt = pickle.load(handle)
 
+with open("E:\\static representation\\data\\" + "raw_data.pickle","rb") as handle:
+    validation_data = pickle.load(handle)
+    
+validation_set = ["octa500","rose","aria_amd","aria_diabetic","chase"]
+
 n_epoch = 100
 n_mixup = 5
 n_patch = 50
@@ -54,12 +60,11 @@ batch_size = 1
 
 #%% setup model
 model_anchor = models.res_UNet([8,32,32,64,64,16], 1, 2).to(device)
-optimizer_inner = torch.optim.Adam(model_anchor.parameters(),lr=5e-4)
-scheduler_inner = StepLR(optimizer_inner, step_size=2, gamma=0.5)
-
 model = models.res_UNet([8,32,32,64,64,16], 1, 2).to(device)
-model.load_state_dict(torch.load(model_root + "MetaSyn_4.pt"))
+#model.load_state_dict(torch.load(model_root + "MetaSyn_4.pt"))
 
+optimizer_inner = torch.optim.Adam(model.parameters(),lr=5e-4)
+scheduler_inner = StepLR(optimizer_inner, step_size=2, gamma=0.5)
 optimizer_outer = torch.optim.Adam(model.parameters(),lr=5e-4)
 scheduler_outer = StepLR(optimizer_outer, step_size=2, gamma=0.5)
 
@@ -74,8 +79,9 @@ get_sample = func.SampleMatrix()
 
 for epoch in range(n_epoch):
     # load data
+    alpha = tuple([random.randint(1, 10) for i in range(3)])
     train_loader = func.load_DirMixup_data(mtrain_data, mtest_data, gt, n_mixup, 
-                                       n_patch, patch_size, batch_size)
+                                       n_patch, patch_size, alpha, batch_size)
     # inner loop
     values = range(len(train_loader))
     with tqdm(total=len(values)) as pbar:
@@ -97,8 +103,8 @@ for epoch in range(n_epoch):
             pbar.set_description('InnerLoop: %d. inner-loss: %.4f.' \
                                  %(epoch+1, seg_loss.item()))
     
-    torch.save(model.state_dict(),check_root + "anchor_model.pt")
-    model_anchor.load_state_dict(torch.load(check_root + "anchor_model.pt"))
+    torch.save(model.state_dict(),check_root + "model_anchor.pt")
+    model_anchor.load_state_dict(torch.load(check_root + "model_anchor.pt"))
     
     # outer loop    
     values = range(len(train_loader))
@@ -138,9 +144,29 @@ for epoch in range(n_epoch):
                 
                 if step % (len(train_loader)-1) == 0 and step != 0:
                     func.display_array(x, anchor, y_seg, y_seg_anchor, y)
+        
+    # validation
+    valid_dataset = random.sample(validation_set,1)[0]
+    valid_im_list = validation_data[valid_dataset + "_im"]
+    valid_gt_list = validation_data[valid_dataset + "_gt"]
+    vresult = []
     
-        scheduler_inner.step()
-        scheduler_outer.step()
+    values = range(len(valid_im_list))
+    with tqdm(total=len(values)) as pbar:
+        for i in range(len(values)):
+            vx = valid_im_list[i]
+            vy = valid_gt_list[i]
+            
+            test = func.Size_Adaptive_Test(vx)
+            pred = test.model_test(model, device)
+            
+            vresult.append(util.dice(pred,vy)) 
+            pbar.update(1)
+
+    print("{} meam DICE: {}".format(valid_dataset, np.array(vresult).mean()))
     
-    name = 'MetaSyn_{}.pt'.format(mtrain)
-    torch.save(model.state_dict(),model_root+name)
+    scheduler_inner.step()
+    scheduler_outer.step()
+    
+name = 'MetaSyn_{}.pt'.format(mtrain)
+torch.save(model.state_dict(),model_root+name)

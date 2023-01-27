@@ -14,8 +14,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data as Data
+from torch.autograd import Variable
+
 import pickle
 import matplotlib.pyplot as plt
+
 
 
 def dir_mixup(im_1, im_2, im_3, alpha):        
@@ -23,7 +26,7 @@ def dir_mixup(im_1, im_2, im_3, alpha):
     opt = theta[0]*util.ImageRescale(im_1,[0,1]) + \
           theta[1]*util.ImageRescale(im_2,[0,1]) + \
           theta[2]*util.ImageRescale(im_3,[0,1])
-    return opt
+    return util.ImageRescale(opt,[0,1])
 
 
 def data_split(meta_test):
@@ -63,7 +66,7 @@ class get_DirMixup_dataset(Data.Dataset):
             y = gt[i]
             
 #            anchor = 0.4*mtrain_data[trainkey][i] + 0.6*np.float32(y)
-            anchor = mtrain_data[trainkey][i]
+            anchor = util.ImageRescale(mtrain_data[trainkey][i],[0,1])
             
             mixup_list = self.get_mixup_sample(im_1, im_2, im_3)
             pair_data = self.get_crop_data(mixup_list, y, anchor)
@@ -122,8 +125,8 @@ class get_DirMixup_dataset(Data.Dataset):
     
         return pair_data
             
-def load_DirMixup_data(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size, batch_size):
-    dataset = get_DirMixup_dataset(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size)
+def load_DirMixup_data(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size, alpha, batch_size):
+    dataset = get_DirMixup_dataset(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size, alpha)
     loader = Data.DataLoader(dataset, batch_size, shuffle=True)        
     return loader
 
@@ -170,7 +173,45 @@ def display_array(x, anchor, pred, pred_anchor, gt):
     
     fig.tight_layout(pad=0.1)
     plt.show()
+
+
+class Size_Adaptive_Test:
+    def __init__(self, im):
+        super(Size_Adaptive_Test, self).__init__()
+        
+        self.softmax = nn.Softmax2d()
+        self.factor = 128
+        self.h, self.w = im.shape
+        self.x = self.fit_tensor(util.ImageRescale(im, [0,1]))
     
+    def fit_tensor(self, im):
+        dim = len(im.shape)
+        size_x = self.h + (self.factor - self.h % self.factor)
+        size_y = self.w + (self.factor - self.w % self.factor)
+        if dim == 2:
+            temp = np.zeros((size_x, size_y), dtype=np.float32)
+            temp[:self.h,:self.w] = im
+            x_tensor = torch.tensor(temp[None,None,:,:]).type(torch.FloatTensor)
+        else:
+            raise ValueError
+        return x_tensor
+    
+    def get_prediction(self, y, t_type):
+        if t_type == "pred":
+            pred_tensor = torch.argmax(self.softmax(y), dim=1)
+            matrix = pred_tensor[0,:self.h,:self.w].detach().cpu().numpy()
+        elif t_type == "latent":
+            matrix = y[0,0,:self.h,:self.w].detach().cpu().numpy()
+        else:
+            raise ValueError
+        return matrix
+
+    def model_test(self, model, device):    
+        x = Variable(self.x).to(device)
+        y, _ = model(x)
+        pred = self.get_prediction(y, "pred")
+        return pred
+
 
 def load_checkpoint(model, optimizer, filename='checkpoint.pth'):
 
