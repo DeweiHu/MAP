@@ -15,10 +15,16 @@ import torch
 import torch.nn as nn
 import torch.utils.data as Data
 from torch.autograd import Variable
-
+import random
 import pickle
 import matplotlib.pyplot as plt
+import cv2
 
+def CLAHE(im, cl):
+    im = np.uint8(im*255)
+    clahe = cv2.createCLAHE(clipLimit = cl)
+    opt = clahe.apply(im)
+    return util.ImageRescale(opt,[0,1])
 
 
 def dir_mixup(im_1, im_2, im_3, alpha):        
@@ -60,15 +66,24 @@ class get_DirMixup_dataset(Data.Dataset):
         assert len(testkeys) == 3, "sample space error"
         
         for i in range(len(mtest_data[testkeys[0]])):
-            im_1 = mtest_data[testkeys[0]][i]
-            im_2 = mtest_data[testkeys[1]][i]
-            im_3 = mtest_data[testkeys[2]][i]
+            im_1 = util.ImageRescale(mtest_data[testkeys[0]][i],[0,1])
+            im_1 = CLAHE(im_1.max()-im_1, 5)
+            im_2 = util.ImageRescale(mtest_data[testkeys[1]][i],[0,1])
+            im_3 = util.ImageRescale(mtest_data[testkeys[2]][i],[0,1])
             y = gt[i]
             
-#            anchor = 0.4*mtrain_data[trainkey][i] + 0.6*np.float32(y)
+#            anchor = util.ImageRescale(0.4*mtrain_data[trainkey][i] + 0.6*np.float32(y),[0,1])
+            alpha = tuple([random.randint(1,10),
+                           random.randint(1,10),
+                           random.randint(1,10)])
             anchor = util.ImageRescale(mtrain_data[trainkey][i],[0,1])
+            anchor = dir_mixup(im_1,im_1,anchor,alpha)
             
             mixup_list = self.get_mixup_sample(im_1, im_2, im_3)
+            
+            # include the synthetic basis images
+            mixup_list.extend([im_1, im_1, im_2])
+            
             pair_data = self.get_crop_data(mixup_list, y, anchor)
         
             self.x_list += pair_data["x_stack"]
@@ -130,7 +145,69 @@ def load_DirMixup_data(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size
     loader = Data.DataLoader(dataset, batch_size, shuffle=True)        
     return loader
 
+#%%
+class get_raw_dataset(Data.Dataset):
+    def __init__(self, train_data, gt, n_patch, patch_size):
+        # hyper-parameters
+        self.n_patch = n_patch
+        self.patch_size = patch_size
+        
+        # output
+        self.x_list = []
+        self.y_list = []
+        
+        for i in range(len(train_data)):
+            x = util.ImageRescale(train_data[i],[0,1])
+            x = CLAHE(x.max()-x, 5)
+            y = gt[i]
+            
+            pair_data = self.get_crop_data(x, y)        
+            self.x_list += pair_data["x"]
+            self.y_list += pair_data["y"]
+            
+    def __len__(self,):
+        return len(self.x_list)
 
+    
+    def __getitem__(self, idx):    
+        
+        x = self.x_list[idx]
+        y = self.y_list[idx]        
+        x_tensor = torch.tensor(x).type(torch.FloatTensor)
+        y_tensor = torch.tensor(y).type(torch.int64)        
+
+        return x_tensor, y_tensor
+    
+    
+    def get_sample_coordinate(self, h, w):
+        sample_x = np.random.randint(0, h-self.patch_size[0], self.n_patch)
+        sample_y = np.random.randint(0, w-self.patch_size[1], self.n_patch)
+        return sample_x, sample_y
+    
+    
+    def get_crop_data(self, im, gt):
+        pair_data = {"x":[], "y":[]}
+        h,w = im.shape
+        crd_x, crd_y = self.get_sample_coordinate(h, w)
+        
+        for i in range(self.n_patch):
+            x = im[crd_x[i]:crd_x[i]+self.patch_size[0],
+                   crd_y[i]:crd_y[i]+self.patch_size[1]]
+            y = gt[crd_x[i]:crd_x[i]+self.patch_size[0],
+                   crd_y[i]:crd_y[i]+self.patch_size[1]]
+
+            pair_data["x"].append(np.array(x[None,:,:]))
+            pair_data["y"].append(y)
+    
+        return pair_data
+            
+def load_raw_data(train_data, gt, n_patch, patch_size, batch_size):
+    dataset = get_raw_dataset(train_data, gt, n_patch, patch_size)
+    loader = Data.DataLoader(dataset, batch_size, shuffle=True)        
+    return loader
+
+
+#%%
 class SampleMatrix(nn.Module):
     def __init__(self,):
         super(SampleMatrix, self).__init__()
@@ -168,8 +245,8 @@ def display_array(x, anchor, pred, pred_anchor, gt):
         ax[0,i].imshow(x_mat, cmap="gray"),ax[0,i].axis("off")
         ax[1,i].imshow(pred_color, cmap="gray"),ax[1,i].axis("off")
     
-    ax[0,b].imshow(anchor_mat, cmap="gray"),ax[0,b].axis("off")
-    ax[1,b].imshow(pred_anchor_color, cmap="gray"),ax[1,b].axis("off")
+        ax[0,b].imshow(anchor_mat, cmap="gray"),ax[0,b].axis("off")
+        ax[1,b].imshow(pred_anchor_color, cmap="gray"),ax[1,b].axis("off")
     
     fig.tight_layout(pad=0.1)
     plt.show()
