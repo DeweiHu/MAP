@@ -19,6 +19,7 @@ import random
 import pickle
 import matplotlib.pyplot as plt
 import cv2
+import imgaug.augmenters as iaa
 
 def CLAHE(im, cl):
     im = np.uint8(im*255)
@@ -46,6 +47,94 @@ def data_split(meta_test):
     return meta_train, meta_test
 
 
+class ImageAugment(nn.Module):
+    
+    def __init__(self, ):
+        super(ImageAugment, self).__init__()
+    
+    # Image Quality
+    @staticmethod
+    def unsharp_mask(im, kernel_size=(5,5), sigma=1.0, alpha=10):
+        im_blurred = cv2.GaussianBlur(im, kernel_size, sigma)
+        im_sharpened = float(alpha + 1) * im - float(alpha) * im_blurred
+        im_sharpened = np.clip(im_sharpened, 0, 1)
+        return im_sharpened
+    
+    @staticmethod
+    def gaussian_blur(im, kernel_size=(5,5), sigma=1.0):
+        im_blurred = cv2.GaussianBlur(im, kernel_size, sigma)
+        return im_blurred
+    
+    @staticmethod
+    def gaussian_noise(im, sigma):
+        noise =  np.random.normal(loc=0, scale=sigma, size=im.shape)
+        im_noise = im + noise
+        im_noise = np.clip(im_noise, 0, 1)
+        return im_noise
+    
+    # Image Appearance
+    @staticmethod
+    def adjust_brightness(im, magnitude):
+        im_bright = im + magnitude
+        im_bright = np.clip(im_bright, 0, 1)
+        return im_bright
+    
+    @staticmethod
+    def perturbation(im, scale, bias):
+        im_perturb = scale*im + bias
+        im_perturb = np.clip(im_perturb, 0, 1)
+        return im_perturb
+    
+    @staticmethod
+    def adjust_gamma(im, gamma):
+        invGamma = 1 / gamma
+        table = [((i / 255) ** invGamma) * 255 for i in range(256)]
+        table = np.array(table, np.uint8)
+        
+        im_uint8 = np.uint8(util.ImageRescale(im, [0,255]))
+        opt = cv2.LUT(im_uint8, table)
+        return util.ImageRescale(opt, [0,1])
+    
+    @staticmethod
+    def spatial_augment(im, gt):
+        seq = iaa.Sequential([iaa.Affine(
+                                rotate=(-45, 45),
+                                scale={"x":(0.8,1.5), "y":(0.8,1.5)}
+                                ),
+                              iaa.Sharpen((0.0, 1.0)), 
+                            ], random_order=True)
+        gt = gt[None,:,:,None]
+        im_aug, gt_aug = seq(image = im, 
+                             segmentation_maps=gt)
+        gt_aug = np.squeeze(gt_aug, axis=-1)
+        gt_aug = np.squeeze(gt_aug, axis=0)
+        return im_aug, gt_aug
+                            
+    def decision(self, p=0.5):
+        return random.uniform(0,1) > p
+    
+    def forward(self, im):
+            
+        if self.decision():
+            sigma = random.uniform(0.25,1.5)
+            im = ImageAugment.gaussian_blur(im, (3,3), sigma)
+        
+        if self.decision():
+            sigma = random.uniform(0.01,0.15)
+            im = ImageAugment.gaussian_noise(im, sigma)
+            
+        if self.decision():
+            mag = random.uniform(-0.1,0.1)
+            im = ImageAugment.adjust_brightness(im, mag)
+        
+        if self.decision(0.8):
+            scale = random.uniform(0.1,0.8)
+            bias = random.uniform(-0.1,0.1)
+            im = ImageAugment.perturbation(im, scale, bias)
+        
+        return im
+
+
 class get_DirMixup_dataset(Data.Dataset):
     def __init__(self, mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size, 
                  alpha=(1.5,1.5,1.5)):
@@ -54,6 +143,7 @@ class get_DirMixup_dataset(Data.Dataset):
         self.n_patch = n_patch
         self.patch_size = patch_size
         self.alpha = alpha
+        self.augment = ImageAugment()
         
         # output
         self.x_list = []
@@ -70,19 +160,20 @@ class get_DirMixup_dataset(Data.Dataset):
             im_1 = CLAHE(im_1.max()-im_1, 5)
             im_2 = util.ImageRescale(mtest_data[testkeys[1]][i],[0,1])
             im_3 = util.ImageRescale(mtest_data[testkeys[2]][i],[0,1])
+#            im_3 = im_3.max()-im_3
             y = gt[i]
             
 #            anchor = util.ImageRescale(0.4*mtrain_data[trainkey][i] + 0.6*np.float32(y),[0,1])
-            alpha = tuple([random.randint(1,10),
+            alpha = tuple([random.randint(3,10),
                            random.randint(1,10),
-                           random.randint(1,10)])
+                           random.randint(5,10)])
             anchor = util.ImageRescale(mtrain_data[trainkey][i],[0,1])
             anchor = dir_mixup(im_1,im_1,anchor,alpha)
             
             mixup_list = self.get_mixup_sample(im_1, im_2, im_3)
             
             # include the synthetic basis images
-            mixup_list.extend([im_1, im_1, im_2])
+            mixup_list.extend([im_1, im_2, self.augment(im_1),self.augment(im_1)])
             
             pair_data = self.get_crop_data(mixup_list, y, anchor)
         
