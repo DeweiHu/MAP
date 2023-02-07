@@ -52,7 +52,7 @@ with open("E:\\static representation\\data\\" + "raw_data.pickle","rb") as handl
     
 validation_set = ["drive","octa500","rose","aria_control","aria_amd","aria_diabetic"]
 
-n_epoch = 50
+n_epoch = 30
 n_mixup = 5
 n_patch = 40
 patch_size = [256,256]
@@ -64,9 +64,9 @@ model = models.res_UNet([8,32,32,64,64,16], 1, 2).to(device)
 #model.load_state_dict(torch.load(model_root + "rUNet.pt"))
 
 optimizer_inner = torch.optim.Adam(model.parameters(),lr=1e-3)
-scheduler_inner = StepLR(optimizer_inner, step_size=5, gamma=0.6)
+scheduler_inner = StepLR(optimizer_inner, step_size=3, gamma=0.5)
 optimizer_outer = torch.optim.Adam(model.parameters(),lr=1e-3)
-scheduler_outer = StepLR(optimizer_outer, step_size=5, gamma=0.6)
+scheduler_outer = StepLR(optimizer_outer, step_size=3, gamma=0.5)
 
 # losses
 DSC_loss = loss.DiceBCELoss()
@@ -79,9 +79,9 @@ get_sample = func.SampleMatrix()
 
 for epoch in range(n_epoch):
     # load data
-    alpha = tuple([random.randint(8,10),
-                   random.randint(5,10),
-                   random.randint(1,5)])
+    alpha = tuple([np.random.normal(9.5,0.5),
+                   np.random.normal(7,1),
+                   np.random.normal(3,1.3)])
     train_loader = func.load_DirMixup_data(mtrain_data, mtest_data, gt, n_mixup, 
                                        n_patch, patch_size, alpha, batch_size)
     # inner loop
@@ -128,7 +128,7 @@ for epoch in range(n_epoch):
             seg_loss = CE_loss(y_seg, y) + DSC_loss(pred, y)
             
             sim_loss = torch.tensor(0).type(torch.FloatTensor).to(device)
-            for k in range(len(cats)-1,len(cats)):
+            for k in range(len(cats)):
                 z_anchor = cats_anchor[k].repeat(b,1,1,1)
                 z = cats[k]
                 sim_loss += L1_loss(z, z_anchor)    
@@ -159,6 +159,8 @@ for epoch in range(n_epoch):
     # validation
     print("Validation with α = ({},{},{}): \n----------------------------"
           .format(alpha[0],alpha[1],alpha[2]))
+    
+    valid_result = {}
     for item in validation_set:
         valid_im_list = validation_data[item + "_im"]
         valid_gt_list = validation_data[item + "_gt"]
@@ -176,16 +178,22 @@ for epoch in range(n_epoch):
             vresult.append(util.dice(pred,vy)) 
             
         print("{} meam DICE: {}".format(item, np.array(vresult).mean()))
-    
+        valid_result[item] = np.array(vresult).mean()
+        
     print("----------------------------")
     
     scheduler_inner.step()
     scheduler_outer.step()
     
-#name = 'MetaSyn_{}.pt'.format(mtrain)
-#torch.save(model.state_dict(),model_root+name)
+    if valid_result["octa500"] > 0.78 and valid_result["rose"] > 0.72 and \
+    valid_result["aria_diabetic"] > 0.64:
+        name = 'MetaSyn_tuned_{}.pt'.format(epoch)
+        torch.save(model.state_dict(),model_root+name)
 
 #%%
+#model = models.res_UNet([8,32,32,64,64,16], 1, 2).to(device)
+#model.load_state_dict(torch.load(model_root + "MetaSyn_tuned.pt"))
+#
 #print("Validation with α = ({},{},{}): \n----------------------------"
 #          .format(alpha[0],alpha[1],alpha[2]))
 #for item in validation_set:
