@@ -168,12 +168,13 @@ class get_DirMixup_dataset(Data.Dataset):
                            random.randint(1,10),
                            random.randint(5,10)])
             anchor = util.ImageRescale(mtrain_data[trainkey][i],[0,1])
-            anchor = dir_mixup(im_1,im_1,anchor,alpha)
+#            anchor = CLAHE(anchor.max()-anchor, 5)
+#            anchor = dir_mixup(im_1,im_1,anchor,alpha)
             
             mixup_list = self.get_mixup_sample(im_1, im_2, im_3)
             
             # include the synthetic basis images
-            mixup_list.extend([im_1, im_2, self.augment(im_1),self.augment(im_1)])
+            mixup_list.extend([im_1, im_2, self.augment(im_1)])
             
             pair_data = self.get_crop_data(mixup_list, y, anchor)
         
@@ -390,3 +391,33 @@ def load_checkpoint(model, optimizer, filename='checkpoint.pth'):
     scheduler_inner = checkpoint['lr_sched']
 
     return model, optimizer, epoch, scheduler_inner
+
+
+def dft(trg_img):  
+    fft_trg_np = np.fft.fft2(trg_img, axes=(-2, -1))
+    fft_trg_np = np.fft.fft2(trg_img, axes=(-2, -1))
+    amplitude, phase = np.abs(fft_trg_np), np.angle(fft_trg_np)
+    return np.fft.fftshift(amplitude), np.fft.fftshift(phase)
+
+def idft(amplitude, phase):
+    amp = np.fft.fftshift(amplitude)
+    pha = np.fft.fftshift(phase)
+    im_freq = amp * np.exp(1j * pha)
+    im_time = np.abs(np.fft.ifft2(im_freq))
+    return im_time
+    
+def patch_swap(a_local, a_target, L=0.1 , ratio=0):
+    
+    h, w = a_local.shape
+    b = (  np.floor(np.amin((h,w))*L)  ).astype(int)
+    c_h = np.floor(h/2.0).astype(int)
+    c_w = np.floor(w/2.0).astype(int)
+
+    h1 = c_h-b
+    h2 = c_h+b+1
+    w1 = c_w-b
+    w2 = c_w+b+1
+
+    a_local[h1:h2,w1:w2] = a_local[h1:h2,w1:w2] * ratio + \
+                           a_target[h1:h2,w1:w2] * (1 - ratio)
+    return a_local
