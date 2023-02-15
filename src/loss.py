@@ -114,4 +114,21 @@ class SSIMLoss(nn.Module):
         
         return ms_ssim_loss
     
+
+def instance_correlation_loss(a, b, lambda_=1, device="cuda:0"):
+    N = a.size()[0]
     
+    z_a = a.view(N, -1)
+    z_b = b.view(1, -1).repeat(N,1)
+    
+    z_a_norm = (z_a - z_a.mean(0)) / z_a.std(0)
+    
+    c = torch.matmul(z_a_norm.T, z_b) / N
+    D,_ = c.size()
+    
+    c_diag = torch.pow((c - 1), 2) * torch.eye(D).to(device)
+    c_off_diag = c * ((1 - torch.eye(D)) * lambda_).to(device)
+    
+    loss = (c_diag + c_off_diag).sum()
+    
+    return loss
