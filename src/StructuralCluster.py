@@ -56,7 +56,7 @@ n_epoch = 50
 n_mixup = 5
 n_patch = 40
 n_class = 4
-n_samples = 8 
+n_samples = 9 
 patch_size = [256,256]
 batch_size = 1
 
@@ -67,7 +67,7 @@ model = models.res_UNet([8,32,32,64,64,16], 1, 2).to(device)
 
 optimizer_inner = torch.optim.Adam(model.parameters(),lr=1e-3)
 scheduler_inner = StepLR(optimizer_inner, step_size=2, gamma=0.5)
-optimizer_outer = torch.optim.Adam(model.parameters(),lr=1e-3)
+optimizer_outer = torch.optim.Adam(model.parameters(),lr=2e-3)
 scheduler_outer = StepLR(optimizer_outer, step_size=3, gamma=0.5)
 
 # losses
@@ -82,8 +82,11 @@ get_sample = func.SampleMatrix()
 
 for epoch in range(n_epoch):
     # load data
-    alpha = tuple([1.5,1.5,1.5])
-
+    alpha = tuple([np.random.normal(6,2.5),
+                   np.random.normal(6,2.5),
+                   np.random.normal(6,2.5)])
+    alpha = func.alpha_correction(alpha)
+    
     train_loader = func.load_DirMixup_data(mtrain_data, mtest_data, gt, n_mixup, 
                                        n_patch, patch_size, alpha, batch_size)
     # inner loop

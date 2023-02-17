@@ -16,7 +16,6 @@ import torch.nn as nn
 import torch.utils.data as Data
 from torch.autograd import Variable
 import random
-import pickle
 import matplotlib.pyplot as plt
 import cv2
 import imgaug.augmenters as iaa
@@ -35,6 +34,11 @@ def dir_mixup(im_1, im_2, im_3, alpha):
           theta[2]*util.ImageRescale(im_3,[0,1])
     return util.ImageRescale(opt,[0,1])
 
+
+def alpha_correction(alpha):
+     alpha = np.asarray(alpha)   
+     alpha[alpha <= 0] = 0.1
+     return tuple(alpha)
 
 def data_split(meta_test):
     meta_train = list(np.arange(1,5))
@@ -163,10 +167,9 @@ class get_DirMixup_dataset(Data.Dataset):
 #            im_3 = im_3.max()-im_3
             y = gt[i]
             
-#            anchor = util.ImageRescale(0.4*mtrain_data[trainkey][i] + 0.6*np.float32(y),[0,1])
-            alpha = tuple([random.randint(3,10),
-                           random.randint(1,10),
-                           random.randint(5,10)])
+#            alpha = tuple([random.randint(3,10),
+#                           random.randint(1,10),
+#                           random.randint(8,10)])
             anchor = util.ImageRescale(mtrain_data[trainkey][i],[0,1])
 #            anchor = CLAHE(anchor.max()-anchor, 5)
 #            anchor = dir_mixup(im_1,im_1,anchor,alpha)
@@ -174,7 +177,7 @@ class get_DirMixup_dataset(Data.Dataset):
             mixup_list = self.get_mixup_sample(im_1, im_2, im_3)
             
             # include the synthetic basis images
-            mixup_list.extend([im_1, im_2, self.augment(im_1)])
+            mixup_list.extend([im_1, im_2, self.augment(im_1), im_3])
             
             pair_data = self.get_crop_data(mixup_list, y, anchor)
         
@@ -236,6 +239,7 @@ def load_DirMixup_data(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size
     dataset = get_DirMixup_dataset(mtrain_data, mtest_data, gt, n_mixup, n_patch, patch_size, alpha)
     loader = Data.DataLoader(dataset, batch_size, shuffle=True)        
     return loader
+
 
 #%%
 class get_raw_dataset(Data.Dataset):
