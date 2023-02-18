@@ -146,21 +146,19 @@ class group_correlation_loss(nn.Module):
     def forward(self, z_list):
         z_tensor, n_class = self.list2tensor(z_list)
         
-        ncc_gt = self.label_generator(z_tensor, n_class).to(self.device) 
+        ncc_gt = self.label_generator(n_class).to(self.device) 
         ncc = self.normalize_cross_correlation(z_tensor)
         loss = self.NCC_Loss(ncc, ncc_gt)
         
-        return loss
+        return loss, ncc, ncc_gt
     
-    def label_generator(self, z_tensor, n_class):
-        cls_label = np.repeat([i for i in range(1,n_class+1)], self.n_samples)
-        positive = [i**2 for i in range(1,n_class+1)]
-        c_mat = np.matmul(np.array([cls_label]).T, np.array([cls_label]))
-        
-        gt = np.zeros(c_mat.shape, dtype=int)
-        for value in positive:
-            gt += 1*(c_mat == value)
-        return torch.tensor(gt)  
+    
+    def label_generator(self, n_class):
+        dim = n_class * self.n_samples
+        gt = np.zeros([dim, dim], dtype=int)
+        for i in range(0, dim, self.n_samples):
+            gt[i:i + self.n_samples, i:i + self.n_samples] = np.ones([self.n_samples,self. n_samples], dtype=int)
+        return torch.tensor(gt)
     
     
     def list2tensor(self, z_list):
