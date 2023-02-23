@@ -1,4 +1,4 @@
-# MAC: Domain Generalization via Meta-learning on Anatomy Consistent Synthetic Space 
+# MAC: Domain Generalization via Meta-learning on Anatomy Consistent Synthetic Representation 
 
 
 ### Data arrangement
