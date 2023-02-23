@@ -86,10 +86,13 @@ class pair:
             gt = self.reader(self.gt_dir[i])
             
             if self.msk_dir == None:
-                mask = np.ones(im.shape, dtype=np.uint8)
+                mask = np.ones([im.shape[0],im.shape[1]], dtype=np.uint8)
             else:
                 mask = self.reader(self.msk_dir[i])
-                
+                if len(mask.shape) == 3:
+                    mask = np.uint8(mask == mask.max())
+                    mask = mask[:,:,0]
+                    
             img_list.append(self.normalize(im, "img"))
             gt_list.append(self.normalize(gt, "gt"))
             mask_list.append(self.normalize(mask, "mask"))
