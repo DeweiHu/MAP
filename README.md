@@ -1,5 +1,4 @@
-# MetaSyn
-Meta learning on continuous synthetic space
+# MAC: Domain generalization via Meta-learning on Anatomy Consistent Representation 
 
 
 ### Data arrangement
