@@ -1,5 +1,7 @@
 # MAC: Domain Generalization via Meta-learning on Anatomy Consistent Synthetic Representation 
 
+### Dirichlet Mix-up
+
 
 ### Data arrangement
 Each dataset folder is arranged in the following format. And then paired and normalized by ```data_read.py```. Note that all the images are normalized into range [0,1] and saved in float32. 
