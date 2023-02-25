@@ -1,6 +1,6 @@
 # MAC: Domain Generalization via Meta-learning on Anatomy Consistent Synthetic Representation 
 
-### Dirichlet Mix-up
+### Dirichlet Mixup
 <p align="center">
   <img src="/assets/Dirichlet(1.5,1.5,1.5).png" width="200" />
   <img src="/assets/Dirichlet(5,5,5).png" width="200" /> 
