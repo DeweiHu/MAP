@@ -3,8 +3,8 @@
 ### Dirichlet Mixup
 <p align="center">
   <img src="/assets/Dirichlet(1.5,1.5,1.5).png" width="200" />
-  <img src="/assets/Dirichlet(5,5,5).png" width="200" /> 
-  <img src="/assets/Dirichlet(2,5,15).png" width="200" />
+  <img src="/assets/Dirichlet(5,1.5,1.5).png" width="200" /> 
+  <img src="/assets/Dirichlet(5,1.5,4).png" width="200" />
 </p>
 
 ### Data arrangement
