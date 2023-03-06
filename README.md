@@ -1,7 +1,7 @@
 # MAC: Domain Generalization via Meta-learning on Anatomy Consistent Synthetic Representation 
 
 <p align="center">
-  <img src="/assets/overall.png" width="800" />
+  <img src="/assets/overall.png" width="750" />
 </p>
 
 ### Dirichlet Mixup
