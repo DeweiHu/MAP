@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Feb 10 22:27:23 2023
-
-@author: hudew
-"""
-
 import sys 
 sys.path.insert(0, "E:\\MetaSyn\\src\\")
 sys.path.insert(0, "E:\\tools\\")
@@ -202,10 +195,8 @@ for epoch in range(n_epoch):
     scheduler_inner.step()
     scheduler_outer.step()
     
-    if valid_result["octa500"] > 0.79 and valid_result["rose"] > 0.74 and \
-    valid_result["aria_diabetic"] > 0.65:
-        name = 'MetaSyn_ncc_{}.pt'.format(epoch)
-        torch.save(model.state_dict(),model_root+name)
+    name = 'MetaSyn_ncc_{}.pt'.format(epoch)
+    torch.save(model.state_dict(),model_root+name)
         
 
         
